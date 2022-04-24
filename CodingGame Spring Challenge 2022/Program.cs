@@ -55,14 +55,25 @@ public class Entity
     /// /////////////////
 
     public double DangerLevel { set; get; }
+
+    public int NearbyMonsters { set; get; }
+    public int NearbyAllieds { set; get; }
+    public int NearbyEnemies { set; get; }
+
+    public bool CastWindSpell { set; get; }
+    public bool CastControlSpell { set; get; }
+    public bool CastShieldSpell { set; get; }
 }
 
 public class AlliedHero : Entity
 {
+    private static int serialNumber;
+    public int sn;
     public AlliedHero(int id, int type, int x, int y, int shieldLife, int isControlled, int health, int vx, int vy, int nearBase, int threatFor) :
         base(id, type, x, y, shieldLife, isControlled, health, vx, vy, nearBase, threatFor)
     {
-
+        sn = serialNumber;
+        serialNumber = (serialNumber + 1) % 3;
     }
 }
 
@@ -115,22 +126,45 @@ public class MoveCommand : ICommand
     }
 }
 
-
-public interface IStrategy
+public class WindSpellCommand : ICommand
 {
-    void Run(Base ourBase, Base enemyBase, Entity mainCharacter, IEnumerable<Entity> entities);
+    public int X { get; set; }
+    public int Y { get; set; }
+
+    public WindSpellCommand(int x, int y)
+    {
+        X = x;
+        Y = y;
+    }
+    public string Execute()
+    {
+        return $"SPELL WIND {X} {Y}";
+    }
 }
 
-public class ClosestStrategy : IStrategy
+public abstract class Intelligence
+{
+    public double GetDistanceFromBase(Base theBase, Entity entity)
+    {
+        return Math.Sqrt((theBase.BaseX - entity.X) * (theBase.BaseX - entity.X) + (theBase.BaseY - entity.Y) * (theBase.BaseY - entity.Y));
+    }
+    public double GetDistance(Entity a, Entity b)
+    {
+        return Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
+    }
+    public abstract void Run(Base ourBase, Base enemyBase, Entity mainCharacter, IEnumerable<AlliedHero> alliedHeros, IEnumerable<EnemyHero> enemyHeros, IEnumerable<Monster> monsters, IEnumerable<Entity> entities);
+}
+
+public class ClosestIntelligence : Intelligence
 {
     public virtual double ComputeDangerLevel(Base theBase, Entity entity)
     {
-        double distance = Math.Sqrt((theBase.BaseX - entity.X) * (theBase.BaseX - entity.X) + (theBase.BaseY - entity.Y) * (theBase.BaseY - entity.Y));
-        double weight = 1.0 / (distance + 1.0);
-        entity.DangerLevel = weight * 100;
+        double distance = 1.0 / (GetDistanceFromBase(theBase, entity) + 1.0);
+        double isTargetingBase = (entity.NearBase == 1) && (entity.ThreatFor == 1) ? 1.1 : 1.0;
+        entity.DangerLevel = isTargetingBase * distance * 100;
         return entity.DangerLevel;
     }
-    public void Run(Base ourBase, Base enemyBase, Entity mainCharacter, IEnumerable<Entity> entities)
+    public override void Run(Base ourBase, Base enemyBase, Entity mainCharacter, IEnumerable<AlliedHero> alliedHeros, IEnumerable<EnemyHero> enemyHeros, IEnumerable<Monster> monsters, IEnumerable<Entity> entities)
     {
         foreach (Entity e in entities)
         {
@@ -139,30 +173,65 @@ public class ClosestStrategy : IStrategy
     }
 }
 
+public class NearByIntelligence : Intelligence
+{
+    public override void Run(Base ourBase, Base enemyBase, Entity mainCharacter, IEnumerable<AlliedHero> alliedHeros, IEnumerable<EnemyHero> enemyHeros, IEnumerable<Monster> monsters, IEnumerable<Entity> entities)
+    {
+        int defitionOfNearby = 1280;
+        foreach (Entity e in entities)
+        {
+            if ((GetDistance(mainCharacter, e) <= defitionOfNearby))
+            {
+                if (e is Monster)
+                {
+                    e.NearbyMonsters += 1;
+                }
+                else if (e is AlliedHero)
+                {
+                    e.NearbyAllieds += 1;
+                }
+                else if (e is EnemyHero)
+                {
+                    e.NearbyEnemies += 1;
+                }
+            }
+        }
+    }
+}
+
+
 public class GameManager
 {
     private List<Entity> _entities = new List<Entity>();
-    private static List<IStrategy> _strategies = new List<IStrategy>();
-    private static int _numHeros;
+    private List<Intelligence> _intelligences = new List<Intelligence>();
+    private IStrategy _strategy;
+    private int _numHeros;
+
 
     public Base ourBase;
     public Base enemyBase;
+
     public GameManager(Base ours, Base enemy, int numHeros)
     {
         ourBase = ours;
         enemyBase = enemy;
         _numHeros = numHeros;
-        _strategies.Add(new ClosestStrategy());
+        _intelligences.Add(new ClosestIntelligence());
+        _intelligences.Add(new NearByIntelligence());
+    }
+    public IEnumerable<AlliedHero> GetAlliedHeros()
+    {
+        return _entities.Where(e => e is AlliedHero).Select(a => a as AlliedHero);
+    }
+
+    public void SetStrategy(IStrategy s)
+    {
+        _strategy = s;
     }
 
     public void AddEntity(Entity e)
     {
         _entities.Add(e);
-    }
-
-    public IEnumerable<AlliedHero> GetAlliedHeros()
-    {
-        return _entities.Where(e => e is AlliedHero).Select(a => a as AlliedHero);
     }
 
     public void ClearEntities()
@@ -172,36 +241,67 @@ public class GameManager
 
     public ICommand CommandHero(AlliedHero hero)
     {
-        IEnumerable<AlliedHero> _alliedHeros = GetAlliedHeros();
-        IEnumerable<EnemyHero> _enemyHeros = _entities.Where(e => e is EnemyHero).Select(a => a as EnemyHero);
-        IEnumerable<Monster> _monsters = _entities.Where(e => e is Monster).Select(a => a as Monster);
-
-        foreach (IStrategy strategy in _strategies)
-        {
-            strategy.Run(ourBase, enemyBase, hero, _monsters);
-        }
-
         try
         {
-            //Monster mostDangerousMonster = _monsters?.MaxBy(m => m.DangerLevel);
-            Monster mostDangerousMonster = _monsters.Where(m => (m.DangerLevel == _monsters.Max(a => a.DangerLevel))).FirstOrDefault();
-            
-            if (mostDangerousMonster == null)
+            IEnumerable<AlliedHero> alliedHeros = _entities.Where(e => e is AlliedHero).Select(a => a as AlliedHero);
+            IEnumerable<EnemyHero> enemyHeros = _entities.Where(e => e is EnemyHero).Select(a => a as EnemyHero);
+            IEnumerable<Monster> monsters = _entities.Where(e => e is Monster).Select(a => a as Monster);
+            foreach (Intelligence intelligence in _intelligences)
             {
-                return new WaitCommand();
+                intelligence.Run(ourBase, enemyBase, hero, alliedHeros, enemyHeros, monsters, _entities);
             }
-            
-            ICommand nextCommand = new MoveCommand(mostDangerousMonster.X, mostDangerousMonster.Y);
-            return nextCommand;
+            return _strategy.Run(ourBase, enemyBase, hero, alliedHeros, enemyHeros, monsters, _entities);
         }
         catch (Exception ex)
         {
+            //return new WaitCommand();
             throw;
         }
 
     }
 
 }
+
+public interface IStrategy
+{
+    ICommand Run(Base ourBase, Base enemyBase, AlliedHero hero, IEnumerable<AlliedHero> alliedHeros, IEnumerable<EnemyHero> enemyHeros, IEnumerable<Monster> monsters, IEnumerable<Entity> entities);
+}
+
+public class OriginalStrategy: IStrategy
+{
+    private Random _rand = new Random();
+    private enum behaviors
+    {
+        killClosestMonsterToBase
+    }
+    private behaviors _currentAction = behaviors.killClosestMonsterToBase;
+
+    public ICommand Run(Base ourBase, Base enemyBase, AlliedHero hero, IEnumerable<AlliedHero> alliedHeros, IEnumerable<EnemyHero> enemyHeros, IEnumerable<Monster> monsters, IEnumerable<Entity> entities)
+    {
+        if (_currentAction == behaviors.killClosestMonsterToBase)
+        {
+            if (0 == hero.sn && ourBase.Mana >= 10)
+            {
+                if (hero.NearbyEnemies + hero.NearbyMonsters >= 2)
+                {
+                    return new WindSpellCommand(enemyBase.BaseX, enemyBase.BaseY);
+                }
+            }
+            //Monster mostDangerousMonster = _monsters?.MaxBy(m => m.DangerLevel);
+            double mostDangerousValue = monsters.Max(a => a.DangerLevel);
+            Monster mostDangerousMonster = monsters.Where(m => (m.DangerLevel == mostDangerousValue)).FirstOrDefault();
+            if (mostDangerousMonster == null)
+            {
+                return new MoveCommand(_rand.Next(17630), _rand.Next(9000));
+            }
+            ///////////////////////////////////////////////
+            ICommand nextCommand = new MoveCommand(mostDangerousMonster.X, mostDangerousMonster.Y);
+            return nextCommand;
+        }
+        return new WaitCommand();
+    }
+}
+
 
 class Player
 {
@@ -212,14 +312,16 @@ class Player
         int baseX = int.Parse(inputs[0]); // The corner of the map representing your base
         int baseY = int.Parse(inputs[1]);
         int heroesPerPlayer = int.Parse(Console.ReadLine()); // Always 3
+
         GameManager gameManager = new GameManager(new Base(baseX, baseY, -1, -1), new Base(17630 - baseX, 9000 - baseY, -1, -1), heroesPerPlayer);
+        gameManager.SetStrategy(new OriginalStrategy());
         // game loop
         while (true)
         {
 
             inputs = Console.ReadLine().Split(' ');
 
-            gameManager.ourBase.Health = int.Parse(inputs[0]); 
+            gameManager.ourBase.Health = int.Parse(inputs[0]);
             gameManager.ourBase.Mana = int.Parse(inputs[1]);
 
             inputs = Console.ReadLine().Split(' ');
