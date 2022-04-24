@@ -9,6 +9,19 @@ using System.Collections.Generic;
  * Auto-generated code below aims at helping you parse
  * the standard input according to the problem statement.
  **/
+public static class Helper
+{
+    public static double GetDistanceFromBase(Base theBase, Entity entity)
+    {
+        return Math.Sqrt((theBase.BaseX - entity.X) * (theBase.BaseX - entity.X) + (theBase.BaseY - entity.Y) * (theBase.BaseY - entity.Y));
+    }
+    public static double GetDistance(Entity a, Entity b)
+    {
+        return Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
+    }
+}
+
+
 public class Base
 {
     public Base(int baseX, int baseY, int health, int mana)
@@ -56,9 +69,13 @@ public class Entity
 
     public double DangerLevel { set; get; }
 
-    public int NearbyMonsters { set; get; }
-    public int NearbyAllieds { set; get; }
-    public int NearbyEnemies { set; get; }
+    public List<Monster> NearbyMonsters { set; get; }
+    public List<AlliedHero> NearbyAllieds { set; get; }
+    public List<EnemyHero> NearbyEnemies { set; get; }
+
+    public List<Monster> NotFarAwayMonsters { set; get; }
+    public List<AlliedHero> NotFarAwayAllieds { set; get; }
+    public List<EnemyHero> NotFarAwayEnemies { set; get; }
 
     public bool CastWindSpell { set; get; }
     public bool CastControlSpell { set; get; }
@@ -126,6 +143,16 @@ public class MoveCommand : ICommand
     }
 }
 
+public class RandomMoveCommand : ICommand
+{
+    Random _rand = new Random();
+    public string Execute()
+    {
+        ICommand cmd = new MoveCommand(_rand.Next(17630), _rand.Next(9000));
+        return cmd.Execute();
+    }
+}
+
 public class WindSpellCommand : ICommand
 {
     public int X { get; set; }
@@ -142,16 +169,43 @@ public class WindSpellCommand : ICommand
     }
 }
 
+public class ShieldSpellCommand : ICommand
+{
+    public int Id { get; set; }
+
+
+    public ShieldSpellCommand(int id)
+    {
+        Id = id;
+    }
+    public string Execute()
+    {
+        return $"SPELL SHIELD {Id}";
+    }
+}
+
+
+public class ControlSpellCommand : ICommand
+{
+    public int Id { get; set; }
+    public int X { get; set; }
+    public int Y { get; set; }
+
+    public ControlSpellCommand(int id, int x, int y)
+    {
+        Id = id;
+        X = x;
+        Y = y;
+    }
+    public string Execute()
+    {
+        return $"SPELL CONTROL {Id} {X} {Y}";
+    }
+}
+
+
 public abstract class Intelligence
 {
-    public double GetDistanceFromBase(Base theBase, Entity entity)
-    {
-        return Math.Sqrt((theBase.BaseX - entity.X) * (theBase.BaseX - entity.X) + (theBase.BaseY - entity.Y) * (theBase.BaseY - entity.Y));
-    }
-    public double GetDistance(Entity a, Entity b)
-    {
-        return Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
-    }
     public abstract void Run(Base ourBase, Base enemyBase, Entity mainCharacter, IEnumerable<AlliedHero> alliedHeros, IEnumerable<EnemyHero> enemyHeros, IEnumerable<Monster> monsters, IEnumerable<Entity> entities);
 }
 
@@ -159,7 +213,7 @@ public class ClosestIntelligence : Intelligence
 {
     public virtual double ComputeDangerLevel(Base theBase, Entity entity)
     {
-        double distance = 1.0 / (GetDistanceFromBase(theBase, entity) + 1.0);
+        double distance = 1.0 / (Helper.GetDistanceFromBase(theBase, entity) + 1.0);
         double isTargetingBase = (entity.NearBase == 1) && (entity.ThreatFor == 1) ? 1.1 : 1.0;
         entity.DangerLevel = isTargetingBase * distance * 100;
         return entity.DangerLevel;
@@ -177,25 +231,58 @@ public class NearByIntelligence : Intelligence
 {
     public override void Run(Base ourBase, Base enemyBase, Entity mainCharacter, IEnumerable<AlliedHero> alliedHeros, IEnumerable<EnemyHero> enemyHeros, IEnumerable<Monster> monsters, IEnumerable<Entity> entities)
     {
-        int defitionOfNearby = 1280;
+        // mainCharacter is hero
+        double defitionOfNearby = 1280.0;
+        double defitionOfNotFarAway = 2200.0;
+        mainCharacter.NearbyAllieds = new List<AlliedHero>();
+        mainCharacter.NearbyEnemies = new List<EnemyHero>();
+        mainCharacter.NearbyMonsters = new List<Monster>();
+        mainCharacter.NotFarAwayAllieds = new List<AlliedHero>();
+        mainCharacter.NotFarAwayEnemies = new List<EnemyHero>();
+        mainCharacter.NotFarAwayMonsters = new List<Monster>();
         foreach (Entity e in entities)
         {
-            if ((GetDistance(mainCharacter, e) <= defitionOfNearby))
+            double distance = Helper.GetDistance(mainCharacter, e);
+            if ((distance <= defitionOfNearby))
             {
+
                 if (e is Monster)
                 {
-                    e.NearbyMonsters += 1;
+                    mainCharacter.NearbyMonsters.Add(e as Monster);
                 }
                 else if (e is AlliedHero)
                 {
-                    e.NearbyAllieds += 1;
+                    mainCharacter.NearbyAllieds.Add(e as AlliedHero);
                 }
                 else if (e is EnemyHero)
                 {
-                    e.NearbyEnemies += 1;
+                    mainCharacter.NearbyEnemies.Add(e as EnemyHero);
+                }
+            }
+
+            if ((distance <= defitionOfNotFarAway))
+            {
+
+                if (e is Monster)
+                {
+                    mainCharacter.NotFarAwayMonsters.Add(e as Monster);
+                }
+                else if (e is AlliedHero)
+                {
+                    mainCharacter.NotFarAwayAllieds.Add(e as AlliedHero);
+                }
+                else if (e is EnemyHero)
+                {
+                    mainCharacter.NotFarAwayEnemies.Add(e as EnemyHero);
                 }
             }
         }
+        mainCharacter.NearbyAllieds = mainCharacter.NearbyAllieds.OrderBy(a => Helper.GetDistance(mainCharacter, a)).ToList();
+        mainCharacter.NearbyEnemies = mainCharacter.NearbyEnemies.OrderBy(a => Helper.GetDistance(mainCharacter, a)).ToList();
+        mainCharacter.NearbyMonsters = mainCharacter.NearbyMonsters.OrderBy(a => Helper.GetDistance(mainCharacter, a)).ToList();
+        mainCharacter.NotFarAwayMonsters = mainCharacter.NotFarAwayMonsters.OrderBy(a => Helper.GetDistance(mainCharacter, a)).ToList();
+        mainCharacter.NotFarAwayAllieds = mainCharacter.NotFarAwayAllieds.OrderBy(a => Helper.GetDistance(mainCharacter, a)).ToList();
+        mainCharacter.NotFarAwayEnemies = mainCharacter.NotFarAwayEnemies.OrderBy(a => Helper.GetDistance(mainCharacter, a)).ToList();
     }
 }
 
@@ -267,36 +354,169 @@ public interface IStrategy
     ICommand Run(Base ourBase, Base enemyBase, AlliedHero hero, IEnumerable<AlliedHero> alliedHeros, IEnumerable<EnemyHero> enemyHeros, IEnumerable<Monster> monsters, IEnumerable<Entity> entities);
 }
 
-public class OriginalStrategy: IStrategy
+public class OriginalStrategy : IStrategy
 {
     private Random _rand = new Random();
+    private bool _secondHalfGame = false;
+    private int attackAngel = 0;
+    private List<Tuple<int, int>> redbaseEntryLocation = new List<Tuple<int, int>>() { Tuple.Create(13630, 8300), Tuple.Create(17000, 5000) };
+    private List<Tuple<int, int>> bluebaseEntryLocation = new List<Tuple<int, int>>() { Tuple.Create(600, 4000), Tuple.Create(4000, 600) };
     private enum behaviors
     {
-        killClosestMonsterToBase
+        KillClosestMonsterToBase,
+        GoToTheCenterOfMap,
+        KillMonsterNearBy,
+        GoToOurBase,
+        GoToEnemyBase,
+        StayEnemyBaseOutskirt,
+        AttackEnemyBase
+
     }
-    private behaviors _currentAction = behaviors.killClosestMonsterToBase;
+    private behaviors[] _herosAction = new behaviors[3] { behaviors.KillClosestMonsterToBase, behaviors.KillClosestMonsterToBase, behaviors.GoToTheCenterOfMap };
 
     public ICommand Run(Base ourBase, Base enemyBase, AlliedHero hero, IEnumerable<AlliedHero> alliedHeros, IEnumerable<EnemyHero> enemyHeros, IEnumerable<Monster> monsters, IEnumerable<Entity> entities)
     {
-        if (_currentAction == behaviors.killClosestMonsterToBase)
+
+
+        behaviors currentHeroAction = _herosAction[hero.sn % 3];
+        double distanceToOurBase = Math.Sqrt((hero.X - ourBase.BaseX) * (hero.X - ourBase.BaseX) + (hero.Y - ourBase.BaseY) * (hero.Y - ourBase.BaseY));
+        double distanceToEnemyBase = Math.Sqrt((hero.X - enemyBase.BaseX) * (hero.X - enemyBase.BaseX) + (hero.Y - enemyBase.BaseY) * (hero.Y - enemyBase.BaseY));
+
+        List<Tuple<int, int>> enemyBaseEntry = enemyBase.BaseX > 9000 ? redbaseEntryLocation : bluebaseEntryLocation;
+
+
+        switch (currentHeroAction)
         {
-            if (0 == hero.sn && ourBase.Mana >= 10)
-            {
-                if (hero.NearbyEnemies + hero.NearbyMonsters >= 2)
+            case behaviors.GoToOurBase:
+                if (distanceToOurBase <= 5500.0)
+                {
+                    // close enough
+                    _herosAction[hero.sn % 3] = behaviors.KillClosestMonsterToBase;
+                }
+                return new MoveCommand(ourBase.BaseX, ourBase.BaseY);
+            case behaviors.KillClosestMonsterToBase:
+                if (distanceToOurBase >= 8000.0)
+                {
+                    // too far
+                    _herosAction[hero.sn % 3] = behaviors.GoToOurBase;
+                    return new MoveCommand(ourBase.BaseX, ourBase.BaseY);
+                }
+                if (0 == hero.sn && ourBase.Mana >= 10)
+                {
+                    if (distanceToOurBase < 1500.0 && hero.NearbyMonsters.Count() >= 1)
+                    {
+                        return new WindSpellCommand(enemyBase.BaseX, enemyBase.BaseY);
+                    }
+
+                    if (hero.NearbyEnemies.Count() + hero.NearbyMonsters.Count() >= 2)
+                    {
+                        return new WindSpellCommand(enemyBase.BaseX, enemyBase.BaseY);
+                    }
+                }
+                if (1 == hero.sn && ourBase.Mana >= 10 && _secondHalfGame == true)
+                {
+                    if (hero.NotFarAwayMonsters.Count() >= 1)
+                    {
+                        if (null != hero.NotFarAwayMonsters.LastOrDefault())
+                        {
+                            Monster lastNotFarAwayMonsters = hero.NotFarAwayMonsters.LastOrDefault();
+                            if (Helper.GetDistanceFromBase(ourBase, lastNotFarAwayMonsters) > 5000.0 && lastNotFarAwayMonsters.IsControlled==0)
+                            {
+                                return new ControlSpellCommand(lastNotFarAwayMonsters.Id, enemyBase.BaseX, enemyBase.BaseY);
+                            }
+                        }
+                    }
+                }
+                //Monster mostDangerousMonster = _monsters?.MaxBy(m => m.DangerLevel);
+                Monster mostDangerousMonster = monsters.Where(m => (m.DangerLevel == monsters.Max(a => a.DangerLevel))).FirstOrDefault();
+                if (mostDangerousMonster == null)
+                {
+                    return new RandomMoveCommand();
+                }
+                ///////////////////////////////////////////////
+                ICommand nextCommand = new MoveCommand(mostDangerousMonster.X, mostDangerousMonster.Y);
+                return nextCommand;
+            case behaviors.GoToTheCenterOfMap:
+                Console.Error.WriteLine("GoToTheCenterOfMap");
+                int centerX = 17630 / 2;
+                int centerY = 9000 / 2;
+                if (hero.X == centerX || hero.NearbyMonsters.Count() > 0)
+                {
+                    _herosAction[hero.sn % 3] = behaviors.KillMonsterNearBy;
+                }
+                return new MoveCommand(centerX, hero.Y);
+            case behaviors.KillMonsterNearBy:
+                Console.Error.WriteLine("KillMonsterNearBy");
+                if (distanceToEnemyBase <= 4500.0)
+                {
+                    // too close
+                    _herosAction[hero.sn % 3] = behaviors.StayEnemyBaseOutskirt;
+                }
+                if (hero.NotFarAwayMonsters.Count() == 0)
+                {
+                    Console.Error.WriteLine("No NearBy Monster To Kill");
+                    return new RandomMoveCommand();
+                }
+                int lowestHealth = hero.NotFarAwayMonsters.Min(m => m.Health);
+                if (lowestHealth >= 14)
+                {
+                    _herosAction[hero.sn % 3] = behaviors.GoToEnemyBase;
+                    return new MoveCommand(enemyBase.BaseX, enemyBase.BaseY);
+                }
+                Monster targetNearBy = hero.NotFarAwayMonsters.Where(m => lowestHealth == m.Health).FirstOrDefault();
+                return new MoveCommand(targetNearBy.X, targetNearBy.Y);
+            case behaviors.GoToEnemyBase:
+                Console.Error.WriteLine("GoToEnemyBase");
+                if (distanceToEnemyBase <= 6000.0)
+                {
+                    // close enough
+                    _herosAction[hero.sn % 3] = behaviors.AttackEnemyBase;
+                }
+                return new MoveCommand(enemyBase.BaseX, enemyBase.BaseY);
+            case behaviors.StayEnemyBaseOutskirt:
+                if (distanceToEnemyBase > 6000.0)
+                {
+                    // too far
+                    _herosAction[hero.sn % 3] = behaviors.AttackEnemyBase;
+                    return new MoveCommand(enemyBase.BaseX, enemyBase.BaseY);
+                }
+                return new MoveCommand(ourBase.BaseX, ourBase.BaseY);
+                break;
+            case behaviors.AttackEnemyBase:
+                Console.Error.WriteLine("AttackEnemyBase");
+                if (distanceToEnemyBase <= 5000.0)
+                {
+                    // too close
+                    _herosAction[hero.sn % 3] = behaviors.StayEnemyBaseOutskirt;
+                }
+                if (hero.NearbyMonsters.Count() >= 2 && ourBase.Mana >= 10)
+                {
+                    attackAngel += 1;
+                    Console.Error.WriteLine($"ST {attackAngel} {enemyBaseEntry[attackAngel % 2].Item1} {enemyBaseEntry[attackAngel % 2].Item2}");
+                    return new WindSpellCommand(enemyBaseEntry[attackAngel % 2].Item1, enemyBaseEntry[attackAngel % 2].Item2);
+
+                }
+                Monster ShieldingMonster = hero.NotFarAwayMonsters.Where(m => m.ShieldLife == 0 && Helper.GetDistanceFromBase(enemyBase, m) <= 4000.0).FirstOrDefault();
+                if (ShieldingMonster != null)
+                {
+                    return new ShieldSpellCommand(ShieldingMonster.Id);
+                }
+                if (hero.NearbyMonsters.Count() >= 1 && hero.NotFarAwayEnemies.Count() == 0 && Helper.GetDistanceFromBase(enemyBase, hero) <=6000.0 && ourBase.Mana >= 10)
                 {
                     return new WindSpellCommand(enemyBase.BaseX, enemyBase.BaseY);
                 }
-            }
-            //Monster mostDangerousMonster = _monsters?.MaxBy(m => m.DangerLevel);
-            double mostDangerousValue = monsters.Max(a => a.DangerLevel);
-            Monster mostDangerousMonster = monsters.Where(m => (m.DangerLevel == mostDangerousValue)).FirstOrDefault();
-            if (mostDangerousMonster == null)
-            {
-                return new MoveCommand(_rand.Next(17630), _rand.Next(9000));
-            }
-            ///////////////////////////////////////////////
-            ICommand nextCommand = new MoveCommand(mostDangerousMonster.X, mostDangerousMonster.Y);
-            return nextCommand;
+                if (hero.NotFarAwayMonsters.Count() == 0)
+                {
+                    Console.Error.WriteLine("No NearBy Monsters To Send To Enemy Base");
+                    return new RandomMoveCommand();
+                }
+                int maxMonsterHealth = hero.NotFarAwayMonsters.Max(m => m.Health);
+                if (maxMonsterHealth >= 18)
+                {
+                    _secondHalfGame = true;
+                }
+                Monster maxMonster = hero.NotFarAwayMonsters.Where(m => maxMonsterHealth == m.Health).FirstOrDefault();
+                return new MoveCommand(maxMonster.X, maxMonster.Y);
         }
         return new WaitCommand();
     }
