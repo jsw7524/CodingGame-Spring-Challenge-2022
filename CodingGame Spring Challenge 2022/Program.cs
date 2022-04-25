@@ -359,8 +359,8 @@ public class OriginalStrategy : IStrategy
     private Random _rand = new Random();
     private bool _secondHalfGame = false;
     private int attackAngel = 0;
-    private List<Tuple<int, int>> redbaseEntryLocation = new List<Tuple<int, int>>() { Tuple.Create(13630, 8300), Tuple.Create(17000, 5000) };
-    private List<Tuple<int, int>> bluebaseEntryLocation = new List<Tuple<int, int>>() { Tuple.Create(600, 4000), Tuple.Create(4000, 600) };
+    private List<Tuple<int, int>> redbaseEntryLocation = new List<Tuple<int, int>>() { Tuple.Create(15000, 3000), Tuple.Create(11000, 7000) };
+    private List<Tuple<int, int>> bluebaseEntryLocation = new List<Tuple<int, int>>() { Tuple.Create(6000, 1000), Tuple.Create(2000, 5000) };
     private enum behaviors
     {
         KillClosestMonsterToBase,
@@ -467,50 +467,47 @@ public class OriginalStrategy : IStrategy
                 return new MoveCommand(targetNearBy.X, targetNearBy.Y);
             case behaviors.GoToEnemyBase:
                 Console.Error.WriteLine("GoToEnemyBase");
-                if (distanceToEnemyBase <= 6000.0)
+                if (distanceToEnemyBase <= 5500.0)
                 {
                     // close enough
                     _herosAction[hero.sn % 3] = behaviors.AttackEnemyBase;
                 }
                 return new MoveCommand(enemyBase.BaseX, enemyBase.BaseY);
             case behaviors.StayEnemyBaseOutskirt:
-                if (distanceToEnemyBase > 6000.0)
+                if (hero.X== enemyBaseEntry[attackAngel % 2].Item1 && hero.Y== enemyBaseEntry[attackAngel % 2].Item2)
+                {
+                    attackAngel += 1;
+                }
+                if (hero.NotFarAwayMonsters.Count() > 0)
                 {
                     // too far
                     _herosAction[hero.sn % 3] = behaviors.AttackEnemyBase;
-                    return new MoveCommand(enemyBase.BaseX, enemyBase.BaseY);
                 }
-                return new MoveCommand(ourBase.BaseX, ourBase.BaseY);
+                return new MoveCommand(enemyBaseEntry[attackAngel % 2].Item1, enemyBaseEntry[attackAngel % 2].Item2);
                 break;
             case behaviors.AttackEnemyBase:
                 Console.Error.WriteLine("AttackEnemyBase");
-                if (distanceToEnemyBase <= 5000.0)
-                {
-                    // too close
-                    _herosAction[hero.sn % 3] = behaviors.StayEnemyBaseOutskirt;
-                }
                 if (hero.NearbyMonsters.Count() >= 2 && ourBase.Mana >= 10)
                 {
-                    attackAngel += 1;
-                    Console.Error.WriteLine($"ST {attackAngel} {enemyBaseEntry[attackAngel % 2].Item1} {enemyBaseEntry[attackAngel % 2].Item2}");
-                    return new WindSpellCommand(enemyBaseEntry[attackAngel % 2].Item1, enemyBaseEntry[attackAngel % 2].Item2);
-
+                    return new WindSpellCommand(enemyBase.BaseX, enemyBase.BaseY);
                 }
-                Monster ShieldingMonster = hero.NotFarAwayMonsters.Where(m => m.ShieldLife == 0 && Helper.GetDistanceFromBase(enemyBase, m) <= 4000.0).FirstOrDefault();
+                Monster ShieldingMonster = hero.NotFarAwayMonsters.Where(m => m.ShieldLife == 0 && Helper.GetDistanceFromBase(enemyBase, m) <= 4500.0).FirstOrDefault();
                 if (ShieldingMonster != null)
                 {
                     return new ShieldSpellCommand(ShieldingMonster.Id);
                 }
-                if (hero.NearbyMonsters.Count() >= 1 && hero.NotFarAwayEnemies.Count() == 0 && Helper.GetDistanceFromBase(enemyBase, hero) <=6000.0 && ourBase.Mana >= 10)
+                if (hero.NearbyMonsters.Count() >= 1 && hero.NotFarAwayEnemies.Count() == 0 && Helper.GetDistanceFromBase(enemyBase, hero) <=5000.0 && ourBase.Mana >= 10)
                 {
                     return new WindSpellCommand(enemyBase.BaseX, enemyBase.BaseY);
                 }
-                if (hero.NotFarAwayMonsters.Count() == 0)
+                if (hero.NotFarAwayMonsters.Where(a => (Helper.GetDistanceFromBase(enemyBase, a) < 6000.0) && (Helper.GetDistanceFromBase(enemyBase, a) > 4000.0)).Count() == 0)
                 {
                     Console.Error.WriteLine("No NearBy Monsters To Send To Enemy Base");
+                    attackAngel += 1;
+                    _herosAction[hero.sn % 3] = behaviors.StayEnemyBaseOutskirt;
                     return new RandomMoveCommand();
                 }
-                int maxMonsterHealth = hero.NotFarAwayMonsters.Max(m => m.Health);
+                int maxMonsterHealth = hero.NotFarAwayMonsters.Where(a=>(Helper.GetDistanceFromBase(enemyBase,a) < 6000.0) && (Helper.GetDistanceFromBase(enemyBase, a) > 4000.0)).Max(m => m.Health);
                 if (maxMonsterHealth >= 18)
                 {
                     _secondHalfGame = true;
