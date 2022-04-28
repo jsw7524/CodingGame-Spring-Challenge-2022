@@ -19,6 +19,13 @@ public static class Helper
     {
         return Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
     }
+    public static double AngleToRadian(double angle)
+    {
+
+        return angle * ((2 * Math.PI) / 360.0);
+    }
+
+
 }
 
 
@@ -86,6 +93,11 @@ public class AlliedHero : Entity
 {
     private static int serialNumber;
     public int sn;
+
+    public List<double> _directionScores;
+
+
+
     public AlliedHero(int id, int type, int x, int y, int shieldLife, int isControlled, int health, int vx, int vy, int nearBase, int threatFor) :
         base(id, type, x, y, shieldLife, isControlled, health, vx, vy, nearBase, threatFor)
     {
@@ -287,6 +299,34 @@ public class NearByIntelligence : Intelligence
 }
 
 
+public class DirectionScoreIntelligence : Intelligence
+{
+    public override void Run(Base ourBase, Base enemyBase, Entity mainCharacter, IEnumerable<AlliedHero> alliedHeros, IEnumerable<EnemyHero> enemyHeros, IEnumerable<Monster> monsters, IEnumerable<Entity> entities)
+    {
+        Entity tmp = new Entity(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1);
+
+        AlliedHero ourHero=mainCharacter as AlliedHero;
+
+        ourHero._directionScores = new List<double>();
+        for (int angle = 0; angle < 360; angle++)
+        {
+
+            tmp.X = (int)Math.Round(ourHero.X + 800.0 * Math.Cos(Helper.AngleToRadian(angle)), 0);
+            tmp.Y = (int)Math.Round(ourHero.Y + 800.0 * Math.Sin(Helper.AngleToRadian(angle)), 0);
+            
+            foreach (Monster monster in ourHero.NotFarAwayMonsters)
+            {
+                double distance = 1.0 / (Helper.GetDistance(tmp, monster) + 1.0);
+                ourHero._directionScores[angle] += (distance * distance);
+            }
+
+
+        }
+
+
+    }
+}
+
 public class GameManager
 {
     private List<Entity> _entities = new List<Entity>();
@@ -305,6 +345,7 @@ public class GameManager
         _numHeros = numHeros;
         _intelligences.Add(new ClosestIntelligence());
         _intelligences.Add(new NearByIntelligence());
+        _intelligences.Add(new DirectionScoreIntelligence());
     }
     public IEnumerable<AlliedHero> GetAlliedHeros()
     {
@@ -420,7 +461,7 @@ public class OriginalStrategy : IStrategy
                         if (null != hero.NotFarAwayMonsters.LastOrDefault())
                         {
                             Monster lastNotFarAwayMonsters = hero.NotFarAwayMonsters.LastOrDefault();
-                            if (Helper.GetDistanceFromBase(ourBase, lastNotFarAwayMonsters) > 5000.0 && lastNotFarAwayMonsters.IsControlled==0)
+                            if (Helper.GetDistanceFromBase(ourBase, lastNotFarAwayMonsters) > 5000.0 && lastNotFarAwayMonsters.IsControlled == 0)
                             {
                                 return new ControlSpellCommand(lastNotFarAwayMonsters.Id, enemyBase.BaseX, enemyBase.BaseY);
                             }
@@ -463,8 +504,23 @@ public class OriginalStrategy : IStrategy
                     _herosAction[hero.sn % 3] = behaviors.GoToEnemyBase;
                     return new MoveCommand(enemyBase.BaseX, enemyBase.BaseY);
                 }
-                Monster targetNearBy = hero.NotFarAwayMonsters.Where(m => lowestHealth == m.Health).FirstOrDefault();
-                return new MoveCommand(targetNearBy.X, targetNearBy.Y);
+                //
+
+                double maxDirectionScore=hero._directionScores.Max();
+
+                for (int angle = 0; angle < 360; angle++)
+                {
+                    if (hero._directionScores[angle]== maxDirectionScore)
+                    {
+                        int nextX = (int)Math.Round(hero.X + 800.0 * Math.Cos(Helper.AngleToRadian(angle)), 0);
+                        int nextY = (int)Math.Round(hero.Y + 800.0 * Math.Sin(Helper.AngleToRadian(angle)), 0);
+                        return new MoveCommand(nextX, nextY);
+                    }
+                }
+                throw new Exception();
+                return new RandomMoveCommand();
+                //Monster targetNearBy = hero.NotFarAwayMonsters.Where(m => lowestHealth == m.Health).FirstOrDefault();
+                //return new MoveCommand(targetNearBy.X, targetNearBy.Y);
             case behaviors.GoToEnemyBase:
                 Console.Error.WriteLine("GoToEnemyBase");
                 if (distanceToEnemyBase <= 5500.0)
@@ -474,7 +530,7 @@ public class OriginalStrategy : IStrategy
                 }
                 return new MoveCommand(enemyBase.BaseX, enemyBase.BaseY);
             case behaviors.StayEnemyBaseOutskirt:
-                if (hero.X== enemyBaseEntry[attackAngel % 2].Item1 && hero.Y== enemyBaseEntry[attackAngel % 2].Item2)
+                if (hero.X == enemyBaseEntry[attackAngel % 2].Item1 && hero.Y == enemyBaseEntry[attackAngel % 2].Item2)
                 {
                     attackAngel += 1;
                 }
@@ -496,7 +552,7 @@ public class OriginalStrategy : IStrategy
                 {
                     return new ShieldSpellCommand(ShieldingMonster.Id);
                 }
-                if (hero.NearbyMonsters.Count() >= 1 && hero.NotFarAwayEnemies.Count() == 0 && Helper.GetDistanceFromBase(enemyBase, hero) <=5000.0 && ourBase.Mana >= 10)
+                if (hero.NearbyMonsters.Count() >= 1 && hero.NotFarAwayEnemies.Count() == 0 && Helper.GetDistanceFromBase(enemyBase, hero) <= 5000.0 && ourBase.Mana >= 10)
                 {
                     return new WindSpellCommand(enemyBase.BaseX, enemyBase.BaseY);
                 }
@@ -507,7 +563,7 @@ public class OriginalStrategy : IStrategy
                     _herosAction[hero.sn % 3] = behaviors.StayEnemyBaseOutskirt;
                     return new RandomMoveCommand();
                 }
-                int maxMonsterHealth = hero.NotFarAwayMonsters.Where(a=>(Helper.GetDistanceFromBase(enemyBase,a) < 6000.0) && (Helper.GetDistanceFromBase(enemyBase, a) > 4000.0)).Max(m => m.Health);
+                int maxMonsterHealth = hero.NotFarAwayMonsters.Where(a => (Helper.GetDistanceFromBase(enemyBase, a) < 6000.0) && (Helper.GetDistanceFromBase(enemyBase, a) > 4000.0)).Max(m => m.Health);
                 if (maxMonsterHealth >= 18)
                 {
                     _secondHalfGame = true;
