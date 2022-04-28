@@ -94,7 +94,7 @@ public class AlliedHero : Entity
     private static int serialNumber;
     public int sn;
 
-    public List<double> _directionScores;
+    public double[] _directionScores;
 
 
 
@@ -307,7 +307,7 @@ public class DirectionScoreIntelligence : Intelligence
 
         AlliedHero ourHero=mainCharacter as AlliedHero;
 
-        ourHero._directionScores = new List<double>();
+        ourHero._directionScores = new double[360];
         for (int angle = 0; angle < 360; angle++)
         {
 
@@ -436,6 +436,11 @@ public class OriginalStrategy : IStrategy
                 }
                 return new MoveCommand(ourBase.BaseX, ourBase.BaseY);
             case behaviors.KillClosestMonsterToBase:
+                if (hero.ShieldLife==0 &&  ourBase.Mana > 10 && hero.NotFarAwayEnemies.Count() > 0)
+                {
+                    return new ShieldSpellCommand(hero.Id);
+                }
+
                 if (distanceToOurBase >= 8000.0)
                 {
                     // too far
