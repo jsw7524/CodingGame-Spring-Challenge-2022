@@ -403,7 +403,7 @@ public class OriginalStrategy : IStrategy
                 }
                 if (0 == hero.sn && ourBase.Mana >= 10)
                 {
-                    if (distanceToOurBase < 1500.0 && hero.NearbyMonsters.Count() >= 1)
+                    if (distanceToOurBase < 1500.0 && hero.NearbyMonsters.Where(m=>m.ShieldLife==0).Count() >= 1)
                     {
                         return new WindSpellCommand(enemyBase.BaseX, enemyBase.BaseY);
                     }
